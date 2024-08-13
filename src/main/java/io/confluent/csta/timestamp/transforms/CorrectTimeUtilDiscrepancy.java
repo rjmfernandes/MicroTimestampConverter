@@ -13,6 +13,8 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.transforms.Transformation;
 import org.apache.kafka.connect.transforms.util.SchemaUtil;
 import org.apache.kafka.connect.transforms.util.SimpleConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -42,6 +44,9 @@ public abstract class CorrectTimeUtilDiscrepancy<R extends ConnectRecord<R>> imp
                     "date field value to check");
 
     private static final String PURPOSE = "Workaround for java.time and java.util representation discrepancy of older dates";
+
+    private static final Logger logger = LoggerFactory.getLogger(CorrectTimeUtilDiscrepancy.class);
+
 
     private String fieldName;
     private String fieldValue;
@@ -80,6 +85,7 @@ public abstract class CorrectTimeUtilDiscrepancy<R extends ConnectRecord<R>> imp
 
     @Override
     public R apply(R record) {
+
         if (operatingSchema(record) == null) {
             return applySchemaless(record);
         } else {
@@ -106,13 +112,13 @@ public abstract class CorrectTimeUtilDiscrepancy<R extends ConnectRecord<R>> imp
 
     private R applyWithSchema(R record) {
         final Struct value = requireStruct(operatingValue(record), PURPOSE);
-
+        logger.debug("Original Record: " + record.toString());
         Schema updatedSchema = schemaUpdateCache.get(value.schema());
         if(updatedSchema == null) {
             updatedSchema = makeUpdatedSchema(value.schema());
             schemaUpdateCache.put(value.schema(), updatedSchema);
         }
-
+        logger.debug( "New updated Schema " + updatedSchema.fields().toString());
         final Struct updatedValue = new Struct(updatedSchema);
 
         for (Field field : value.schema().fields()) {
