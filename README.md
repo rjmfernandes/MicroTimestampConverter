@@ -1003,7 +1003,7 @@ Now we get on the topic (the `java.time` value):
 }
 ```
 
-If we wanted to sink now we would need to use our precious SMT:
+If we wanted to sink now we would need to use our previous SMT:
 
 ```bash
 curl -i -X PUT -H "Accept:application/json" \
