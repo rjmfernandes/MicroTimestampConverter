@@ -20,6 +20,7 @@ Currently TimestampConverter looses precision beyond milliseconds during sinking
     - [Sink after](#sink-after)
     - [Sorting java.time and java.util discrepancy before sinking with custom SMT](#sorting-javatime-and-javautil-discrepancy-before-sinking-with-custom-smt)
     - [Tombstone](#tombstone)
+    - [Making sure topic has java.time type of values when using JDBC Source Connector for `0001-01-01`](#making-sure-topic-has-javatime-type-of-values-when-using-jdbc-source-connector-for-0001-01-01)
   - [Cleanup](#cleanup)
 
 ## Setup
@@ -917,6 +918,124 @@ And we get the last update for the Carmen entry for the table:
 
 ```
 "Carmen"	"Fernandes"	"2024-07-30 09:20:11.467"
+```
+
+### Making sure topic has java.time type of values when using JDBC Source Connector for `0001-01-01`
+
+Now we may face the issue where the values loaded from JDBC Source connector need to have the value for `0001-01-01` 
+compatible with `java.time`. Even is using JDBC Sink later we have to use the custom SMT 
+`io.confluent.csta.timestamp.transforms.CorrectTimeUtilDiscrepancy` before also.
+
+To reproduce we create a table in postgres:
+
+```sql
+create table with_date10 (name text not null, my_date DATE not null);
+INSERT INTO with_date10 (name,my_date) VALUES ('Rui', '0001-01-01');
+INSERT INTO with_date10 (name,my_date) VALUES ('Rui', '2024-07-07');
+```
+
+If we now create a connector:
+
+```shell
+curl -i -X PUT -H "Accept:application/json" \
+     -H "Content-Type: application/json" http://localhost:8083/connectors/with-date10/config \
+     -d '{
+             "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+             "connection.url": "jdbc:postgresql://host.docker.internal:5432/postgres",
+             "connection.user": "postgres",
+             "connection.password": "password",
+             "topic.prefix": "postgres10-",
+             "poll.interval.ms" : 3600000,
+             "table.whitelist" : "with_date10",
+             "mode":"bulk",
+             "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+          "transforms": "timesmod",
+            "transforms.timesmod.field": "my_date",
+            "transforms.timesmod.target.type": "Date",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value"}'
+```
+
+We get the problematic message in the topic we wanted to reproduce:
+
+```json
+{
+  "name": "Rui",
+  "my_date": -719164
+}
+```
+
+We want to guarantee that this value is in fact `-719162` the value for the calendar over `java.time`. So we will need to use a custom SMT.
+
+```shell
+curl -i -X PUT -H "Accept:application/json" \
+     -H "Content-Type: application/json" http://localhost:8083/connectors/with-date22/config \
+     -d '{
+             "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+             "connection.url": "jdbc:postgresql://host.docker.internal:5432/postgres",
+             "connection.user": "postgres",
+             "connection.password": "password",
+             "topic.prefix": "postgres22-",
+             "poll.interval.ms" : 3600000,
+             "table.whitelist" : "with_date10",
+             "mode":"bulk",
+             "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+          "transforms": "correcttime,timesmod",
+          "transforms.correcttime.field.name": "my_date",
+            "transforms.correcttime.field.value": "0001-01-01",
+            "transforms.correcttime.type": "io.confluent.csta.timestamp.transforms.ReverseCorrectTimeUtilDiscrepancy$Value",
+            "transforms.timesmod.field": "my_date",
+            "transforms.timesmod.target.type": "Date",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value"}'
+```
+
+Now we get on the topic (the `java.time` value):
+
+```json
+{
+  "name": "Rui",
+  "my_date": -719162
+}
+```
+
+If we wanted to sink now we would need to use our precious SMT:
+
+```bash
+curl -i -X PUT -H "Accept:application/json" \
+    -H  "Content-Type:application/json" http://localhost:8083/connectors/withdate-sink22/config \
+    -d '{
+          "connector.class"    : "io.confluent.connect.jdbc.JdbcSinkConnector",
+          "connection.url"     : "jdbc:postgresql://host.docker.internal:5432/postgres",
+          "connection.user"    : "postgres",
+          "connection.password": "password",
+          "topics"             : "postgres22-with_date10",
+          "tasks.max"          : "1",
+          "auto.create"        : "true",
+          "auto.evolve"        : "true",
+          "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+            "transforms": "timesmod,correctDays",
+            "transforms.timesmod.field": "my_date",
+            "transforms.timesmod.target.type": "Timestamp",
+            "transforms.timesmod.unix.precision": "microseconds",
+            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+            "transforms.correctDays.field.name": "my_date",
+            "transforms.correctDays.field.value": "0001-01-01",
+            "transforms.correctDays.type": "io.confluent.csta.timestamp.transforms.CorrectTimeUtilDiscrepancy$Value"}'
+```
+
+And so on database we get as originally:
+
+```
+"Rui"	"0001-01-01 00:00:00"
+"Rui"	"2024-07-07 00:00:00"
 ```
 
 ## Cleanup
