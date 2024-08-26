@@ -985,13 +985,10 @@ curl -i -X PUT -H "Accept:application/json" \
           "value.converter.schemas.enable":"false",
           "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
           "value.converter"     : "io.confluent.connect.avro.AvroConverter",
-          "transforms": "correcttime,timesmod",
+          "transforms": "correcttime",
           "transforms.correcttime.field.name": "my_date",
             "transforms.correcttime.field.value": "0001-01-01",
-            "transforms.correcttime.type": "io.confluent.csta.timestamp.transforms.ReverseCorrectTimeUtilDiscrepancy$Value",
-            "transforms.timesmod.field": "my_date",
-            "transforms.timesmod.target.type": "Date",
-            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value"}'
+            "transforms.correcttime.type": "io.confluent.csta.timestamp.transforms.ReverseCorrectTimeUtilDiscrepancy$Value"}'
 ```
 
 Now we get on the topic (the `java.time` value):
