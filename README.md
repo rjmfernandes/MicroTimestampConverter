@@ -1018,11 +1018,7 @@ curl -i -X PUT -H "Accept:application/json" \
           "value.converter.schemas.enable":"false",
           "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
           "value.converter"     : "io.confluent.connect.avro.AvroConverter",
-            "transforms": "timesmod,correctDays",
-            "transforms.timesmod.field": "my_date",
-            "transforms.timesmod.target.type": "Timestamp",
-            "transforms.timesmod.unix.precision": "microseconds",
-            "transforms.timesmod.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+            "transforms": "correctDays",
             "transforms.correctDays.field.name": "my_date",
             "transforms.correctDays.field.value": "0001-01-01",
             "transforms.correctDays.type": "io.confluent.csta.timestamp.transforms.CorrectTimeUtilDiscrepancy$Value"}'
