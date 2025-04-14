@@ -25,6 +25,12 @@ Currently TimestampConverter looses precision beyond milliseconds during sinking
 
 ## Setup
 
+If you want to make sure to test with last versions of connectors run first:
+
+```bash
+rm -fr ./plugins/confluentinc-kafka-connect-jdbc
+```
+
 ### Start Docker Compose
 
 ```bash
@@ -426,7 +432,11 @@ Now if we restart our connector. We get a message:
 }
 ```
 
-As one can see we get now a string invalid as per our schema in comparison to what we had before which was a valid long representing the micros. The reason for that is that if we transform our date in database to long we get in milliseconds:
+As one can see we get now a string invalid as per our schema in comparison to what we had before which was a valid long representing the micros. 
+
+**This issue does not happen anymore with latest versions of the connectors. As of 20250414. But the value although not a string is still truncated as 9223372036854775.**
+
+The reason for that is that if we transform our date in database to long we get in milliseconds:
 
 ```sql
 SELECT *,EXTRACT(EPOCH FROM customer_time)*1000 from customers100;
@@ -455,6 +465,8 @@ INSERT INTO customers100(
 And restart our connector.
 
 We find the first one to be transformed correctly into `9002447236853000` while the second (and any above) into a string, in this case `"9034069636855000"`. Although it still process the microseconds correctly (at least until it reaches the maximum value for long in nanoseconds as mentioned before when it can process any further).
+
+**As mentioned before this issue does not happen anymore with latest versions of the connectors. As of 20250414. But the value although not a string is still truncated as 9223372036854775 for values bigger than the max handled as long. No point doing what's mentioned next since the transformation to string has been fixed.**
 
 It's not clear to us what triggers this behaviour: starting processing as string even before reaching the limit. In any case what we can try is to transform the value into a long after for the cases it is a string. We can do that by changing our connector with smt chain:
 
