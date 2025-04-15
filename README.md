@@ -8,6 +8,7 @@ Currently TimestampConverter looses precision beyond milliseconds during sinking
     - [Install JDBC Sink Connector plugin](#install-jdbc-sink-connector-plugin)
   - [Microseconds Precision Loss](#microseconds-precision-loss)
     - [Reproduce the issue](#reproduce-the-issue)
+    - [New Improvements on JDBC Sink Connector](#new-improvements-on-jdbc-sink-connector)
     - [Custom SMT and DB Trigger](#custom-smt-and-db-trigger)
     - [No Custom SMT just DB Trigger Workaround](#no-custom-smt-just-db-trigger-workaround)
   - [Source JDBC Connector](#source-jdbc-connector)
@@ -123,6 +124,32 @@ curl -i -X PUT -H "Accept:application/json" \
 If we check our database and look for the table customer rows we will see the entries keep only milliseconds resolution.
 
 The issue is that currently TimestampConverter relies on java.util.Date and SimpleDateFormat both with resolution till milliseconds.
+
+### New Improvements on JDBC Sink Connector
+
+With version 10.8.3 of the Sink connector https://docs.confluent.io/kafka-connectors/jdbc/current/changelog.html#version-10-8-3 (April 2025) there were improvements that allow us to circumvent the issue. So if we call:
+
+```bash
+curl -i -X PUT -H "Accept:application/json" \
+    -H  "Content-Type:application/json" http://localhost:8083/connectors/my-sink-postgres-new/config \
+    -d '{
+          "connector.class"    : "io.confluent.connect.jdbc.JdbcSinkConnector",
+          "connection.url"     : "jdbc:postgresql://host.docker.internal:5432/postgres",
+          "connection.user"    : "postgres",
+          "connection.password": "password",
+          "topics"             : "customers",
+          "tasks.max"          : "1",
+          "auto.create"        : "true",
+          "auto.evolve"        : "true",
+          "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+          "timestamp.precision.mode": "microseconds",
+          "timestamp.fields.list": "customer_time"}'
+```
+
+We should see new entries on our table that will keep the microseconds precision. Basically makes available a fix at the connector level that allows for you not to have to use the SMT, by leveraging `timestamp.precision.mode` and `timestamp.fields.list`. Check https://docs.confluent.io/kafka-connectors/jdbc/current/sink-connector/sink_config_options.html 
 
 ### Custom SMT and DB Trigger
 
