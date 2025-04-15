@@ -210,6 +210,8 @@ This custom SMT class `io.confluent.csta.timestamp.transforms.TimestampConverter
 
 But we leverage the string target type (with a format value we can use here but not applicable for SimpleDateFormat used in old standard TimestampConverter) and a trigger on database side to workaround the issue.
 
+**Keep in mind that the new improvements on Sink Connector `timestamp.precision.mode` and `timestamp.fields.list` should remove the need for this workaround.**
+
 ### No Custom SMT just DB Trigger Workaround
 
 Create a new table in posgres:
@@ -261,6 +263,8 @@ curl -i -X PUT -H "Accept:application/json" \
 ```
 
 This way it should get populated the new table `customers3` with micro seconds resolution.
+
+**Keep in mind that the new improvements on Sink Connector `timestamp.precision.mode` and `timestamp.fields.list` should remove the need for this workaround.**
 
 ## Source JDBC Connector 
 
@@ -530,6 +534,8 @@ curl -i -X PUT -H "Accept:application/json" \
 ```
 
 With this we get for both `9002447236853` and `9034069636855`. But we still can't handle the case of max value `9999-12-31 23:59:59.000000` which will be capped to `Friday, 11 April 2262 23:47:16.854`.
+
+**Again, on latest versions, this workaround is not required since the old bug has been fixed.**
 
 ### SMT Chain with Custom SMT Workaround
 
