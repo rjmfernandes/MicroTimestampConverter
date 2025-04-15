@@ -587,6 +587,8 @@ We get now what we were looking for the max value (in micros):
 }
 ```
 
+**Note again that as per last versions the `tolong` transformation wouldnt be required for this workaround. But the workaround itself is still valid considering max date cap.**
+
 Let's try now to sink this back into the database:
 
 ```shell
@@ -619,6 +621,8 @@ select * from "postgres3-customers100";
 ```
 
 We see we are able to keep the results as they were although we lost the micros resolution cause of the sink issue first discussed here.
+
+**But again with new versions we can avoid that by using now the configuration parameters and avoiding the SMT.**
 
 ## With Date 
 
