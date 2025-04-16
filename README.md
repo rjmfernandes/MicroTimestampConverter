@@ -15,7 +15,8 @@ Currently TimestampConverter looses precision beyond milliseconds during sinking
     - [Default Behaviour](#default-behaviour)
     - [TimestampConverter SMT](#timestampconverter-smt)
     - [Large Values Issue](#large-values-issue)
-    - [SMT Chain with Custom SMT Workaround](#smt-chain-with-custom-smt-workaround)
+      - [SMT Chain with Custom SMT Workaround](#smt-chain-with-custom-smt-workaround)
+    - [Large Values Issue Without SMT](#large-values-issue-without-smt)
   - [With Date](#with-date)
     - [Source JDBC](#source-jdbc)
     - [Sink after](#sink-after)
@@ -537,7 +538,9 @@ With this we get for both `9002447236853` and `9034069636855`. But we still can'
 
 **Again, on latest versions, this workaround is not required since the old bug has been fixed.**
 
-### SMT Chain with Custom SMT Workaround
+**Also the issue is now only limmited to using the SMT. If you don't use it the precision should be kept and no issue with large dates should exist. See section after.**
+
+#### SMT Chain with Custom SMT Workaround
 
 We have built a custom SMT `io.confluent.csta.timestamp.transforms.InsertMaxDate` that basically checks for dates in the field specified (in our case this will be `customer_time`) for values corresponding to the "nano long max" up to milliseconds (check discussion before) `9223372036854` and replace for those cases by the value `253402300799000` corresponding to our desired max `9999-12-31 23:59:59.000000` in milliseconds.
 
@@ -623,6 +626,83 @@ select * from "postgres3-customers100";
 We see we are able to keep the results as they were although we lost the micros resolution cause of the sink issue first discussed here.
 
 **But again with new versions we can avoid that by using now the configuration parameters and avoiding the SMT.**
+
+### Large Values Issue Without SMT
+
+If we use after creating the table `customers100` before (and inserting the first normal vale and the large value):
+
+```shell
+curl -i -X PUT -H "Accept:application/json" \
+     -H "Content-Type: application/json" http://localhost:8083/connectors/my-source-postgres-eng/config \
+     -d '{
+             "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+             "connection.url": "jdbc:postgresql://host.docker.internal:5432/postgres",
+             "connection.user": "postgres",
+             "connection.password": "password",
+             "topic.prefix": "postgres-eng-",
+             "poll.interval.ms" : 3600000,
+             "table.whitelist" : "customers100",
+          "timestamp.granularity": "micros_long",
+             "mode":"bulk"}'
+```
+
+So with no SMT. We get on topic `postgres-eng-customers100` the message for large value:
+
+```json
+{
+  "first_name": "rui",
+  "last_name": "fernandes",
+  "customer_time": 253402300799000000
+}
+```
+
+And the schema:
+
+```json
+{
+  "connect.name": "customers100",
+  "fields": [
+    {
+      "name": "first_name",
+      "type": "string"
+    },
+    {
+      "name": "last_name",
+      "type": "string"
+    },
+    {
+      "name": "customer_time",
+      "type": "long"
+    }
+  ],
+  "name": "customers100",
+  "type": "record"
+}
+```
+
+We could try doing the sink using the new capabilities:
+
+```bash
+curl -i -X PUT -H "Accept:application/json" \
+    -H  "Content-Type:application/json" http://localhost:8083/connectors/my-sink-postgres-new-eng/config \
+    -d '{
+          "connector.class"    : "io.confluent.connect.jdbc.JdbcSinkConnector",
+          "connection.url"     : "jdbc:postgresql://host.docker.internal:5432/postgres",
+          "connection.user"    : "postgres",
+          "connection.password": "password",
+          "topics"             : "postgres-eng-customers100",
+          "tasks.max"          : "1",
+          "auto.create"        : "true",
+          "auto.evolve"        : "true",
+          "value.converter.schema.registry.url": "http://schema-registry:8081",
+          "value.converter.schemas.enable":"false",
+          "key.converter"       : "org.apache.kafka.connect.storage.StringConverter",
+          "value.converter"     : "io.confluent.connect.avro.AvroConverter",
+          "timestamp.precision.mode": "microseconds",
+          "timestamp.fields.list": "customer_time"}'
+```
+
+And no issues should exist anymore.
 
 ## With Date 
 
